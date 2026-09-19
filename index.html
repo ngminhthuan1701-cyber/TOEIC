@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TOEIC Flashcard & Quiz</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    /* CSS lật thẻ Flashcard 3D */
+    .perspective { perspective: 1000px; }
+    .transform-style-3d { transform-style: preserve-3d; }
+    .backface-hidden { backface-visibility: hidden; }
+    .rotate-y-180 { transform: rotateY(180deg); }
+  </style>
+</head>
+<body class="bg-slate-100 text-slate-800 min-h-screen flex flex-col items-center p-4">
+
+  <!-- Header -->
+  <header class="w-full max-w-2xl flex flex-wrap justify-between items-center py-4 mb-4 border-b border-slate-300">
+    <h1 class="text-2xl font-bold text-indigo-600">TOEIC Master</h1>
+    <div class="flex gap-2 mt-2 sm:mt-0">
+      <button id="btnNotify" onclick="enableNotifications()" class="text-xs bg-slate-200 hover:bg-slate-300 text-slate-700 px-3 py-1.5 rounded-lg border border-slate-300 transition">
+        🔔 Bật thông báo màn hình
+      </button>
+      <button onclick="switchTab('flashcard')" class="tab-btn px-4 py-1.5 text-sm font-semibold rounded-lg bg-indigo-600 text-white" id="tabFlashcard">Flashcard</button>
+      <button onclick="switchTab('quiz')" class="tab-btn px-4 py-1.5 text-sm font-semibold rounded-lg bg-white text-slate-700 hover:bg-slate-50 border border-slate-300" id="tabQuiz">Trắc nghiệm</button>
+    </div>
+  </header>
+
+  <!-- Loading State -->
+  <div id="loading" class="mt-20 text-center">
+    <div class="animate-spin inline-block w-8 h-8 border-4 border-current border-t-transparent text-indigo-600 rounded-full"></div>
+    <p class="mt-2 text-slate-500 font-medium">Đang tải dữ liệu từ Google Sheets...</p>
+  </div>
+
+  <!-- Main Container -->
+  <main id="app" class="w-full max-w-xl hidden">
+    
+    <!-- ================= TAB 1: FLASHCARD ================= -->
+    <section id="sectionFlashcard">
+      <div class="flex justify-between items-center mb-2 px-1 text-sm font-medium text-slate-500">
+        <span id="cardProgress">Thẻ: 0/0</span>
+        <span>Nhấn vào thẻ để lật</span>
+      </div>
+
+      <!-- Flashcard 3D Element -->
+      <div class="perspective w-full h-80 cursor-pointer" onclick="toggleCardFlip()">
+        <div id="cardInner" class="relative w-full h-full transform-style-3d transition-transform duration-500 shadow-lg rounded-2xl">
+          
+          <!-- Mặt trước: Từ vựng & Phát âm -->
+          <div class="absolute w-full h-full backface-hidden bg-white border border-slate-200 rounded-2xl flex flex-col justify-center items-center p-6 text-center">
+            <span id="frontPos" class="text-xs uppercase font-bold tracking-wider text-indigo-500 bg-indigo-50 px-2.5 py-1 rounded-full mb-3">POS</span>
+            <h2 id="frontWord" class="text-4xl font-extrabold text-slate-900 mb-2">Word</h2>
+            <p id="frontPhonetic" class="text-slate-400 text-lg mb-4">/phonetic/</p>
+            <button onclick="speakWord(event)" class="bg-indigo-50 hover:bg-indigo-100 text-indigo-600 p-2.5 rounded-full transition" title="Nghe phát âm">
+              🔊 Nghe phát âm
+            </button>
+          </div>
+
+          <!-- Mặt sau: Nghĩa & Ví dụ -->
+          <div class="absolute w-full h-full backface-hidden rotate-y-180 bg-indigo-600 text-white rounded-2xl flex flex-col justify-center items-center p-6 text-center shadow-lg">
+            <h3 id="backMeaning" class="text-2xl font-bold mb-4">Nghĩa từ vựng</h3>
+            <p id="backExample" class="text-indigo-100 italic bg-indigo-700/60 p-4 rounded-xl text-sm leading-relaxed max-w-md">"Example sentence goes here"</p>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- Card Controls -->
+      <div class="flex justify-between items-center mt-6">
+        <button onclick="prevCard()" class="bg-white hover:bg-slate-50 border border-slate-300 font-semibold px-5 py-2 rounded-xl transition shadow-sm text-sm">
+          ⬅ Trước
+        </button>
+        <button onclick="nextCard()" class="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold px-6 py-2 rounded-xl transition shadow-sm text-sm">
+          Tiếp theo ➡
+        </button>
+      </div>
+    </section>
+
+    <!-- ================= TAB 2: TRẮC NGHIỆM ================= -->
+    <section id="sectionQuiz" class="hidden">
+      <div class="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
+        <div class="flex justify-between items-center mb-4 text-xs font-semibold uppercase tracking-wider text-slate-400">
+          <span>Câu hỏi trắc nghiệm</span>
+          <span id="quizScore">Điểm: 0</span>
+        </div>
+
+        <div class="text-center py-4 mb-6">
+          <span id="quizWord" class="text-3xl font-extrabold text-slate-900">Word</span>
+          <p id="quizPhonetic" class="text-sm text-slate-400 mt-1">/phonetic/</p>
+        </div>
+
+        <div id="quizOptions" class="grid grid-cols-1 gap-3">
+          <!-- Các nút đáp án sẽ được render tự động -->
+        </div>
+
+        <div id="quizResult" class="mt-5 text-center text-sm font-semibold hidden"></div>
+
+        <div class="mt-6 flex justify-end">
+          <button id="btnNextQuiz" onclick="nextQuizQuestion()" class="hidden bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold px-5 py-2 rounded-xl transition">
+            Câu tiếp theo ➡
+          </button>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- JavaScript Logic -->
+  <script>
+    // ⚠️ THAY THẾ URL NÀY BẰNG WEB APP URL APPS SCRIPT CỦA BẠN
+    const API_URL = "https://script.google.com/macros/s/AKfycbz_XXXXXXXXXXXXXX/exec";
+
+    let vocabData = [];
+    let currentIndex = 0;
+    let isFlipped = false;
+    let quizScore = 0;
+    let notifyInterval = null;
+
+    // Tải dữ liệu từ Google Sheets
+    async function loadData() {
+      try {
+        const res = await fetch(API_URL);
+        vocabData = await res.json();
+
+        if (!vocabData || vocabData.length === 0) {
+          alert("Bảng tính Google Sheets chưa có dữ liệu từ vựng nào!");
+          return;
+        }
+
+        document.getElementById("loading").classList.add("hidden");
+        document.getElementById("app").classList.remove("hidden");
+        
+        renderCard();
+        setupQuiz();
+      } catch (err) {
+        console.error(err);
+        document.getElementById("loading").innerHTML = `
+          <p class="text-rose-600 font-medium">Lỗi kết nối với Google Sheet.</p>
+          <p class="text-xs text-slate-500 mt-1">Vui lòng kiểm tra lại URL Apps Script hoặc quyền truy cập (Chọn Anyone).</p>
+        `;
+      }
+    }
+
+    // ================= FLASHCARD LOGIC =================
+    function renderCard() {
+      const item = vocabData[currentIndex];
+      isFlipped = false;
+      document.getElementById("cardInner").classList.remove("rotate-y-180");
+
+      document.getElementById("frontWord").innerText = item.word || "";
+      document.getElementById("frontPos").innerText = item.pos ? `(${item.pos})` : "VOCAB";
+      document.getElementById("frontPhonetic").innerText = item.phonetic || "";
+      document.getElementById("backMeaning").innerText = item.meaning || "";
+      document.getElementById("backExample").innerText = item.example ? `"${item.example}"` : "Không có câu ví dụ.";
+      document.getElementById("cardProgress").innerText = `Thẻ: ${currentIndex + 1}/${vocabData.length}`;
+    }
+
+    function toggleCardFlip() {
+      isFlipped = !isFlipped;
+      document.getElementById("cardInner").classList.toggle("rotate-y-180", isFlipped);
+    }
+
+    function nextCard() {
+      currentIndex = (currentIndex + 1) % vocabData.length;
+      renderCard();
+    }
+
+    function prevCard() {
+      currentIndex = (currentIndex - 1 + vocabData.length) % vocabData.length;
+      renderCard();
+    }
+
+    function speakWord(e) {
+      e.stopPropagation(); // Không kích hoạt lật thẻ
+      const word = vocabData[currentIndex]?.word;
+      if (!word) return;
+      const utterance = new SpeechSynthesisUtterance(word);
+      utterance.lang = "en-US";
+      window.speechSynthesis.speak(utterance);
+    }
+
+    // ================= QUIZ LOGIC =================
+    let currentQuizWord = null;
+
+    function setupQuiz() {
+      if (vocabData.length < 4) return;
+      document.getElementById("btnNextQuiz").classList.add("hidden");
+      document.getElementById("quizResult").classList.add("hidden");
+
+      // Chọn 1 từ ngẫu nhiên làm câu hỏi
+      const randomIndex = Math.floor(Math.random() * vocabData.length);
+      currentQuizWord = vocabData[randomIndex];
+
+      document.getElementById("quizWord").innerText = currentQuizWord.word;
+      document.getElementById("quizPhonetic").innerText = currentQuizWord.phonetic || "";
+
+      // Tạo 4 lựa chọn (1 đúng, 3 sai)
+      let options = [currentQuizWord.meaning];
+      while (options.length < 4) {
+        const randOpt = vocabData[Math.floor(Math.random() * vocabData.length)].meaning;
+        if (!options.includes(randOpt)) {
+          options.push(randOpt);
+        }
+      }
+      // Trộn ngẫu nhiên đáp án
+      options.sort(() => Math.random() - 0.5);
+
+      const optionsContainer = document.getElementById("quizOptions");
+      optionsContainer.innerHTML = "";
+
+      options.forEach(opt => {
+        const btn = document.createElement("button");
+        btn.className = "quiz-opt w-full text-left p-3.5 rounded-xl border border-slate-200 hover:bg-indigo-50 hover:border-indigo-200 transition text-sm font-medium text-slate-700";
+        btn.innerText = opt;
+        btn.onclick = () => handleAnswer(btn, opt);
+        optionsContainer.appendChild(btn);
+      });
+    }
+
+    function handleAnswer(selectedBtn, selectedMeaning) {
+      const allBtns = document.querySelectorAll(".quiz-opt");
+      allBtns.forEach(b => b.disabled = true);
+
+      const resultBox = document.getElementById("quizResult");
+      resultBox.classList.remove("hidden");
+
+      if (selectedMeaning === currentQuizWord.meaning) {
+        selectedBtn.classList.add("bg-emerald-500", "text-white", "border-emerald-500");
+        resultBox.innerHTML = "<span class='text-emerald-600'>🎉 Chính xác! Bạn đã ghi nhớ từ này.</span>";
+        quizScore += 10;
+      } else {
+        selectedBtn.classList.add("bg-rose-500", "text-white", "border-rose-500");
+        resultBox.innerHTML = `<span class='text-rose-600'>❌ Sai rồi! Đáp án đúng là: <b>${currentQuizWord.meaning}</b></span>`;
+        // Tô màu đáp án đúng
+        allBtns.forEach(b => {
+          if (b.innerText === currentQuizWord.meaning) {
+            b.classList.add("bg-emerald-100", "border-emerald-400", "text-emerald-800");
+          }
+        });
+      }
+
+      document.getElementById("quizScore").innerText = `Điểm: ${quizScore}`;
+      document.getElementById("btnNextQuiz").classList.remove("hidden");
+    }
+
+    function nextQuizQuestion() {
+      setupQuiz();
+    }
+
+    // ================= TABS SWITCHING =================
+    function switchTab(tab) {
+      const tabF = document.getElementById("tabFlashcard");
+      const tabQ = document.getElementById("tabQuiz");
+      const secF = document.getElementById("sectionFlashcard");
+      const secQ = document.getElementById("sectionQuiz");
+
+      if (tab === "flashcard") {
+        tabF.className = "tab-btn px-4 py-1.5 text-sm font-semibold rounded-lg bg-indigo-600 text-white";
+        tabQ.className = "tab-btn px-4 py-1.5 text-sm font-semibold rounded-lg bg-white text-slate-700 hover:bg-slate-50 border border-slate-300";
+        secF.classList.remove("hidden");
+        secQ.classList.add("hidden");
+      } else {
+        tabQ.className = "tab-btn px-4 py-1.5 text-sm font-semibold rounded-lg bg-indigo-600 text-white";
+        tabF.className = "tab-btn px-4 py-1.5 text-sm font-semibold rounded-lg bg-white text-slate-700 hover:bg-slate-50 border border-slate-300";
+        secQ.classList.remove("hidden");
+        secF.classList.add("hidden");
+      }
+    }
+
+    // ================= THÔNG BÁO MÀN HÌNH (DESKTOP NOTIFICATIONS) =================
+    function enableNotifications() {
+      if (!("Notification" in window)) {
+        alert("Trình duyệt của bạn không hỗ trợ thông báo trên màn hình.");
+        return;
+      }
+
+      Notification.requestPermission().then(perm => {
+        if (perm === "granted") {
+          document.getElementById("btnNotify").innerText = "✅ Đã bật nhắc nhở";
+          document.getElementById("btnNotify").classList.add("bg-emerald-100", "text-emerald-700");
+          
+          // Bắn thông báo chào mừng
+          new Notification("TOEIC Master", {
+            body: "Đã kích hoạt chế độ nhắc từ vựng tự động lên màn hình!",
+            icon: "https://cdn-icons-png.flaticon.com/512/3389/3389081.png"
+          });
+
+          // Tự động nhắc 1 từ vựng ngẫu nhiên sau mỗi 30 phút (để test nhanh bạn có thể đổi thành 10000 = 10s)
+          if (notifyInterval) clearInterval(notifyInterval);
+          notifyInterval = setInterval(triggerRandomWordNotification, 30 * 60 * 1000);
+        } else {
+          alert("Bạn chưa cấp quyền nhận thông báo!");
+        }
+      });
+    }
+
+    function triggerRandomWordNotification() {
+      if (vocabData.length === 0 || Notification.permission !== "granted") return;
+      const rand = vocabData[Math.floor(Math.random() * vocabData.length)];
+      new Notification(`[TOEIC] ${rand.word} (${rand.pos || ""})`, {
+        body: `Nghĩa: ${rand.meaning}\nVí dụ: ${rand.example || ""}`,
+        icon: "https://cdn-icons-png.flaticon.com/512/3389/3389081.png"
+      });
+    }
+
+    // Khởi chạy khi load trang
+    loadData();
+  </script>
+</body>
+</html>
